@@ -511,6 +511,9 @@ VREG = Ops.CUSTOMI
 def vreg(n: int):
   return f"r{n}"
 
+def zr_vreg():
+  return Ops(VREG, arg="zr")
+
 ASM = Ops.CUSTOM
 
 def asm_op(nam, *args, **kw):
@@ -586,6 +589,18 @@ def rewrite_shiftadd(ctx: Renderer, op: UOp, d: UOp):
 
   return None
 
+
+def gen_where(ctx: Renderer, op, a, x, y):
+  print(a, x, y)
+  oreg = UOp(VREG, arg=ctx.rv.mkreg())
+  ops = (
+    asm_op(f"add", oreg, y, UOp(Ops.CONST, arg=0)),
+    UOp(Ops.IF, src=tuple([a])),
+    asm_op(f"add", oreg, x, UOp(Ops.CONST, arg=0)),
+    UOp(Ops.ENDIF),
+    UOp(Ops.BLOCKEND, oreg)
+  )
+  return UOp(Ops.BLOCK, src=ops)
 
 def rv_cg(target: RvTarget):
   word_uint = None
@@ -663,6 +678,13 @@ def rv_cg(target: RvTarget):
           )),
       lambda a, b: gen_mult(a, b.arg)),
 
+      (UPat(Ops.WHERE, src=(
+          UPat.var("a"),
+          UPat.var("x"),
+          UPat.var("y")
+          ), name="op"),
+      lambda ctx,op,a,x,y: gen_where(ctx,op,a,x,y))
+
   ]
 
   # first elt in pair is how many dest registers it has
@@ -718,7 +740,7 @@ def rv_cg(target: RvTarget):
           if imm_fits_in_bits(op.src[0].src[1].arg, bits=shift_n_bits) and
              post_check_pat_gp_reg(ctx, d, op.src[0].src[0]) else None),
 
-      (1, UPat(Ops.STORE, (dtypes.int8,dtypes.uint8), src=(
+      (1, UPat(Ops.STORE, src=(
               UPat(Ops.ADD, src=(
                   pat_gp_reg,
                   UPat(Ops.CONST, dtype=max_word_int),
@@ -727,9 +749,10 @@ def rv_cg(target: RvTarget):
           )),
       lambda ctx,op,d: asm_op("sb", op.src[0].src[0], op.src[1], op.src[0].src[1], dtype=op.dtype)
           if imm_fits_in_bits(op.src[0].src[1].arg, bits=shift_n_bits) and
-             post_check_pat_gp_reg(ctx, op.src[0].src[0]) else None),
+             post_check_pat_gp_reg(ctx, op.src[0].src[0]) and 
+             op.src[1].dtype in (dtypes.uint8, dtypes.int8) else None),
 
-      (1, UPat(Ops.STORE, (dtypes.int16,dtypes.uint16), src=(
+      (1, UPat(Ops.STORE, src=(
               UPat(Ops.ADD, src=(
                   pat_gp_reg,
                   UPat(Ops.CONST, dtype=max_word_int),
@@ -738,9 +761,10 @@ def rv_cg(target: RvTarget):
           )),
       lambda ctx,op,d: asm_op("sh", op.src[0].src[0], op.src[1], op.src[0].src[1], dtype=op.dtype)
           if imm_fits_in_bits(op.src[0].src[1].arg, bits=shift_n_bits) and
-             post_check_pat_gp_reg(ctx, op.src[0].src[0]) else None),
+             post_check_pat_gp_reg(ctx, op.src[0].src[0]) and 
+             op.src[1].dtype in (dtypes.uint16, dtypes.int16) else None),
 
-      (1, UPat(Ops.STORE, word_int, src=(
+      (1, UPat(Ops.STORE, src=(
               UPat(Ops.ADD, src=(
                   pat_gp_reg,
                   UPat(Ops.CONST, dtype=max_word_int),
@@ -749,28 +773,32 @@ def rv_cg(target: RvTarget):
           )),
       lambda ctx,op,d: asm_op("sw", op.src[0].src[0], op.src[1], op.src[0].src[1], dtype=op.dtype)
           if imm_fits_in_bits(op.src[0].src[1].arg, bits=shift_n_bits) and
-             post_check_pat_gp_reg(ctx, op.src[0].src[0]) else None),
+             post_check_pat_gp_reg(ctx, op.src[0].src[0]) and 
+             op.src[1].dtype in word_int else None),
 
-      (1, UPat(Ops.STORE, (dtypes.uint8,dtypes.int8), src=(
+      (1, UPat(Ops.STORE, src=(
               pat_gp_reg,
               pat_gp_reg,
           )),
-      lambda ctx,op,d: asm_op("sb", op.src[0], op.src[1], 0, dtype=op.dtype)
-          if post_check_pat_gp_reg(ctx, op.src[0]) else None),
+      lambda ctx,op,d: asm_op("sb", op.src[0], op.src[1], zr_vreg(), dtype=op.dtype)
+          if post_check_pat_gp_reg(ctx, op.src[0]) and 
+             op.src[1].dtype in (dtypes.uint8, dtypes.int8) else None),
 
-      (1, UPat(Ops.STORE, (dtypes.uint16,dtypes.int16), src=(
+      (1, UPat(Ops.STORE, src=(
               pat_gp_reg,
               pat_gp_reg,
           )),
-      lambda ctx,op,d: asm_op("sh", op.src[0], op.src[1], 0, dtype=op.dtype)
-          if post_check_pat_gp_reg(ctx, op.src[0]) else None),
+      lambda ctx,op,d: asm_op("sh", op.src[0], op.src[1], zr_vreg(), dtype=op.dtype)
+          if post_check_pat_gp_reg(ctx, op.src[0]) and 
+             op.src[1].dtype in (dtypes.uint16, dtypes.int16) else None),
 
-      (1, UPat(Ops.STORE, word_int, src=(
+      (1, UPat(Ops.STORE, src=(
               pat_gp_reg,
               pat_gp_reg,
           )),
-      lambda ctx,op,d: asm_op("sw", op.src[0], op.src[1], 0, dtype=op.dtype)
-          if post_check_pat_gp_reg(ctx, op.src[0]) else None),
+      lambda ctx,op,d: asm_op("sw", op.src[0], op.src[1], zr_vreg(), dtype=op.dtype)
+          if post_check_pat_gp_reg(ctx, op.src[0]) and 
+             op.src[1].dtype in word_int else None),
 
 
       # ==== immediate compute ====
@@ -794,13 +822,13 @@ def rv_cg(target: RvTarget):
       (1, UPat(Ops.CAST, max_word_int, (
           pat_gp_reg,
           )),
-      lambda ctx,op,d: asm_op("addi", d, op.src[0], 0, dtype=op.dtype)
+      lambda ctx,op,d: asm_op("addi", d, op.src[0], zr_vreg(), dtype=op.dtype)
           if post_check_pat_gp_reg(ctx, d, op.src[0]) else None),
 
       (1, UPat(Ops.BITCAST, max_word_int, (
           pat_gp_reg,
           )),
-      lambda ctx,op,d: asm_op("addi", d, op.src[0], 0, dtype=op.dtype)
+      lambda ctx,op,d: asm_op("addi", d, op.src[0], zr_vreg(), dtype=op.dtype)
           if post_check_pat_gp_reg(ctx, d, op.src[0]) else None),
 
       (1, UPat(Ops.XOR, max_word_int, (
