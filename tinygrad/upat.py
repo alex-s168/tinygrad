@@ -119,6 +119,8 @@ def _final_render(x:UOp, has_ctx:bool, depth=1) -> list[str]:
   or_pieces: list[str] = []
   for s in x.src:
     if s.op is Ops.OR:
+      if not (len(or_pieces) == 0 and len(s.src) >= 1):
+        print(x)
       assert len(or_pieces) == 0 and len(s.src) >= 1
       for ss in s.src: or_pieces.extend(_final_render(ss, has_ctx, depth+1))
     elif s.op is Ops.ASSIGN:

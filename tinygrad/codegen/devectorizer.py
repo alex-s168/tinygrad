@@ -346,14 +346,15 @@ def full_graph_rewrite(sink:UOp, opts:Optional[Renderer]=None) -> UOp:
   assert sink.op is Ops.SINK, f"sink isn't sink, it's {sink.op}"
   supported_ops = tuple(opts.code_for_op.keys()) if opts is not None else ()
   extra_matcher = opts.extra_matcher if opts is not None and opts.extra_matcher is not None else PatternMatcher([])
+  graph_rewriter = opts.graph_rewriter if opts is not None and opts.graph_rewriter is not None else PatternMatcher([])
 
   # remove reduce
   sink = graph_rewrite(sink, pm_reduce+gep_pushing, ctx=ReduceContext(), name="remove_reduce")
 
   # devectorize is optional
-  if DEVECTORIZE >= 2: sink = graph_rewrite(sink, sym+load_store_folding+load_store_indexing, ctx=opts)
-  elif DEVECTORIZE: sink = graph_rewrite(sink, sym+devectorize+load_store_folding+correct_load_store+load_store_indexing, ctx=opts)
-  else: sink = graph_rewrite(sink, sym+load_store_folding+correct_load_store+load_store_indexing, ctx=opts)
+  if DEVECTORIZE >= 2: sink = graph_rewrite(sink, sym+load_store_folding+load_store_indexing+graph_rewriter, ctx=opts)
+  elif DEVECTORIZE: sink = graph_rewrite(sink, sym+devectorize+load_store_folding+correct_load_store+load_store_indexing+graph_rewriter, ctx=opts)
+  else: sink = graph_rewrite(sink, sym+load_store_folding+correct_load_store+load_store_indexing+graph_rewriter, ctx=opts)
 
   # optional pre matcher
   if opts is not None and opts.pre_matcher is not None: sink = graph_rewrite(sink, opts.pre_matcher)
