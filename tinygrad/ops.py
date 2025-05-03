@@ -153,6 +153,8 @@ class Ops(FastEnum):
   CUSTOM = auto(); CUSTOMI = auto() # noqa: E702
   IGNORE = auto(); FUSE = auto() # noqa: E702
 
+  ASM_OP = auto(); ASM_REG = auto()
+
 class GroupOp:
   Unary = {Ops.EXP2, Ops.LOG2, Ops.SIN, Ops.SQRT, Ops.RECIP, Ops.NEG}
   Binary = {Ops.ADD, Ops.MUL, Ops.IDIV, Ops.MAX, Ops.MOD, Ops.CMPLT, Ops.CMPNE, Ops.XOR, Ops.SHL, Ops.SHR, Ops.OR, Ops.AND, Ops.THREEFRY,

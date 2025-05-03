@@ -147,6 +147,10 @@ spec = PatternMatcher([
 
   # PTX LOAD/STORE
   (UPat((Ops.LOAD, Ops.STORE), src=(UPat(dtype=dtypes.int64),), allow_any_len=True), lambda: True),
+
+  (UPat(GroupOp.Block), lambda: True),
+
+  (UPat((Ops.ASM_OP, Ops.ASM_REG)), lambda: True),
 ])
 
 # *** schedule spec only allows buffers, assigns and kernels in the graph ***

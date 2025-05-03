@@ -507,14 +507,14 @@ class RvTarget:
     return '+'.join([f"rv{self.word_size}i"] + self.ext)
 
 
-VREG = Ops.CUSTOMI
+VREG = Ops.ASM_REG
 def vreg(n: int):
   return f"r{n}"
 
 def zr_vreg():
-  return Ops(VREG, arg="zr")
+  return UOp(VREG, arg="zr")
 
-ASM = Ops.CUSTOM
+ASM = Ops.ASM_OP
 
 def asm_op(nam, *args, **kw):
   ty = kw.get("dtype", dtypes.void)
@@ -591,16 +591,15 @@ def rewrite_shiftadd(ctx: Renderer, op: UOp, d: UOp):
 
 
 def gen_where(ctx: Renderer, op, a, x, y):
-  print(a, x, y)
   oreg = UOp(VREG, arg=ctx.rv.mkreg())
   ops = (
-    asm_op(f"add", oreg, y, UOp(Ops.CONST, arg=0)),
-    UOp(Ops.IF, src=tuple([a])),
-    asm_op(f"add", oreg, x, UOp(Ops.CONST, arg=0)),
-    UOp(Ops.ENDIF),
-    UOp(Ops.BLOCKEND, oreg)
+    asm_op(f"add", oreg, y, UOp(Ops.CONST, dtype=y.dtype, arg=0)),
+    ifv := UOp(Ops.IF, src=(a,)),
+    asm_op(f"add", oreg, x, UOp(Ops.CONST, dtype=y.dtype, arg=0)),
+    UOp(Ops.ENDIF, src=(ifv,)),
+    UOp(Ops.BLOCKEND, src=(oreg,))
   )
-  return UOp(Ops.BLOCK, src=ops)
+  return UOp(Ops.BLOCK, dtype=op.dtype, src=ops)
 
 def rv_cg(target: RvTarget):
   word_uint = None
@@ -628,10 +627,12 @@ def rv_cg(target: RvTarget):
                         UPat(ASM),
                         UPat(Ops.ASSIGN, dtype=max_word_store, src=(UPat(VREG), UPat())),
                         UPat(Ops.CONST, arg=0), # zero reg
-                        # will take care of these way later:
+                        # checks details of these in [post_check_pat_gp_reg]
                         UPat(Ops.RANGE),
                         UPat(Ops.WHERE, dtype=max_word_store),
                         UPat(Ops.DEFINE_GLOBAL),
+                        UPat(Ops.BLOCK),
+                        UPat(Ops.ENDIF),
                         )
 
   def post_check_pat_gp_reg(ctx, *op) -> bool:
@@ -645,8 +646,10 @@ def rv_cg(target: RvTarget):
       return post_check_pat_gp_reg(ctx, *op)
     if op.op == ASM:
       return op.arg in all_rv_ops_with_reg_dest
-    if op.op == Ops.RANGE or op.op == Ops.WHERE:
+    if op.op in {Ops.RANGE, Ops.WHERE}:
       return all([check_gp_or_const(x) for x in op.src])
+    if op.op == Ops.BLOCK:
+      return all([check_gp_or_const(x) or x.op in {Ops.BLOCKEND, Ops.BLOCKSTART, Ops.IF, Ops.ENDIF} for x in op.src])
     return True
 
   pre_codegen = [
